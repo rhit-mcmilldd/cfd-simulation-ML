@@ -1,0 +1,99 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Version: v2306
+    \\  /    A nd           | Website: www.openfoam.com
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      controlDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// Solver: rhoCentralFoam is the correct choice for supersonic compressible flow
+application     rhoCentralFoam;
+
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         0.005;       // Run until steady-state (~5ms for M=2.5)
+deltaT          1e-7;        // Initial timestep — will be adjusted by Courant
+
+writeControl    runTime;
+writeInterval   0.001;
+purgeWrite      3;           // Keep only last 3 time directories
+
+writeFormat     ascii;
+writePrecision  8;
+writeCompression off;
+
+timeFormat      general;
+timePrecision   6;
+
+runTimeModifiable true;
+
+// Courant number control
+adjustTimeStep  yes;
+maxCo           0.3;         // Conservative for strong shocks
+maxDeltaT       1e-6;
+
+// ── Post-processing: sample the 2-D flow field onto a plane ──────────────
+// This generates the .raw files that OpenFOAMLoader reads.
+
+functions
+{
+    surfaces
+    {
+        type            surfaces;
+        libs            (sampling);
+        writeControl    writeTime;
+
+        surfaceFormat   raw;         // Produces x y z value columns
+        fields          (p U rho T Ma);
+
+        surfaces
+        {
+            wedge_plane
+            {
+                type        cuttingPlane;
+                point       (1.0 0.5 0.0);   // Point on z=0 plane
+                normal      (0 0 1);           // Cut at z=0 (midplane)
+                interpolate true;
+            }
+        }
+    }
+
+    // Monitor residuals for convergence
+    residuals
+    {
+        type            solverInfo;
+        libs            (utilityFunctionObjects);
+        fields          (p U rho T);
+        writeControl    timeStep;
+        writeInterval   10;
+    }
+
+    // Force coefficients on the wedge surface
+    forces
+    {
+        type            forceCoeffs;
+        libs            (forces);
+        patches         (wedge);
+        rho             rhoInf;
+        rhoInf          1.225;
+        liftDir         (0 1 0);
+        dragDir         (1 0 0);
+        pitchAxis       (0 0 1);
+        magUInf         857.5;      // M=2.5 * a_inf (a=343 m/s)
+        lRef            1.0;
+        Aref            1.0;
+        writeControl    timeStep;
+        writeInterval   10;
+    }
+}
+
+// ************************************************************************* //

@@ -1,0 +1,57 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  OpenFOAM fvSchemes — rhoCentralFoam supersonic wedge
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      fvSchemes;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// rhoCentralFoam uses a density-based Kurganov-Tadmor central scheme.
+// These settings are standard for supersonic inviscid flow.
+
+ddtSchemes
+{
+    default         Euler;
+}
+
+gradSchemes
+{
+    default         Gauss linear;
+    grad(U)         Gauss linear;
+}
+
+divSchemes
+{
+    default         none;
+    div(phi,U)      Gauss linearUpwind grad(U);
+    div(phiv,p)     Gauss linearUpwind default;
+    div(phid,p)     Gauss linearUpwind default;
+    div(phi,e)      Gauss linearUpwind default;
+    div(phi,K)      Gauss linearUpwind default;
+    div(phi,h)      Gauss linearUpwind default;
+    div((muEff*dev2(T(grad(U))))) Gauss linear;
+}
+
+laplacianSchemes
+{
+    default         Gauss linear corrected;
+}
+
+interpolationSchemes
+{
+    default         linear;
+    reconstruct(rho) vanLeer;
+    reconstruct(U)   vanLeerV;
+    reconstruct(T)   vanLeer;
+}
+
+snGradSchemes
+{
+    default         corrected;
+}
+
+// ************************************************************************* //

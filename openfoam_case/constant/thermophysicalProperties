@@ -1,0 +1,45 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  OpenFOAM constant/thermophysicalProperties
+  Perfect gas, calorically perfect air (γ=1.4, R=287.05 J/kg/K)
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      thermophysicalProperties;
+}
+
+thermoType
+{
+    type            hePsiThermo;
+    mixture         pureMixture;
+    transport       const;
+    thermo          hConst;
+    equationOfState perfectGas;
+    specie          specie;
+    energy          sensibleInternalEnergy;
+}
+
+mixture
+{
+    specie
+    {
+        nMoles      1;
+        molWeight   28.97;   // Air [g/mol]
+    }
+
+    thermodynamics
+    {
+        Cp          1004.5;  // J/(kg·K)  — Cp for air at 300 K
+        Hf          0;       // Heat of formation (zero for air)
+    }
+
+    transport
+    {
+        mu          1.8e-05; // Dynamic viscosity [Pa·s]  (inviscid run: irrelevant)
+        Pr          0.72;    // Prandtl number
+    }
+}
+
+// ************************************************************************* //

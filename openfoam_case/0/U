@@ -1,0 +1,54 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  OpenFOAM 0/U — Velocity initial and boundary conditions
+  M=2.5 wedge:  U_inf = M * a_inf = 2.5 * 347.2 = 868 m/s  (T=300K)
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volVectorField;
+    object      U;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dimensions      [0 1 -1 0 0 0 0];
+
+internalField   uniform (868 0 0);  // M=2.5 horizontal free-stream
+
+boundaryField
+{
+    inlet
+    {
+        type            fixedValue;
+        value           uniform (868 0 0);
+    }
+
+    outlet
+    {
+        type            zeroGradient;
+    }
+
+    top
+    {
+        type            zeroGradient;
+    }
+
+    wedge
+    {
+        // Inviscid wall — slip condition (Euler equations, no viscosity)
+        type            slip;
+    }
+
+    // 2-D: front and back are empty patches
+    front
+    {
+        type            empty;
+    }
+
+    back
+    {
+        type            empty;
+    }
+}
+
+// ************************************************************************* //

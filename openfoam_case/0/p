@@ -1,0 +1,26 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  OpenFOAM 0/p — Pressure BCs  (p_inf = 101325 Pa)
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    object      p;
+}
+
+dimensions      [1 -1 -2 0 0 0 0];
+
+internalField   uniform 101325;
+
+boundaryField
+{
+    inlet   { type fixedValue;    value uniform 101325; }
+    outlet  { type zeroGradient; }
+    top     { type zeroGradient; }
+    wedge   { type zeroGradient; }
+    front   { type empty; }
+    back    { type empty; }
+}
+
+// ************************************************************************* //
