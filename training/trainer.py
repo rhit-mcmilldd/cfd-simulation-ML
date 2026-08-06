@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from data.openfoam_loader import FlowData, DataNormalizer
+from data.loader import FlowData, DataNormalizer
 from models.pinn import ShockwavePINN
 from physics.physics_loss import PhysicsLoss
 
@@ -59,14 +59,15 @@ class PINNTrainer:
 
     def _make_wall_points(self, x_range, theta_rad: float, n: int = 300):
         """Sample points on the wedge surface y = x·tan(θ)."""
-        xs = np.linspace(x_range[0] + 1e-4, x_range[1], n, dtype=np.float32)
-        ys = xs * np.tan(theta_rad)
-        # Normalise to match training coords
-        xs_n = self.norm.inverse_transform_field.__func__
-        x_norm = (2.0 * (xs - self.norm.stats["x"][0]) /
-                  (self.norm.stats["x"][1] - self.norm.stats["x"][0]) - 1.0)
-        y_norm = (2.0 * (ys - self.norm.stats["y"][0]) /
-                  (self.norm.stats["y"][1] - self.norm.stats["y"][0]) - 1.0)
+        # x_range is in physical coordinates because the normaliser stats
+        # are computed from the physical training data.
+        xs_phys = np.linspace(x_range[0] + 1e-4, x_range[1], n, dtype=np.float32)
+        ys_phys = xs_phys * np.tan(theta_rad)
+
+        x_lo, x_hi = self.norm.stats["x"]
+        y_lo, y_hi = self.norm.stats["y"]
+        x_norm = (2.0 * (xs_phys - x_lo) / (x_hi - x_lo) - 1.0).astype(np.float32)
+        y_norm = (2.0 * (ys_phys - y_lo) / (y_hi - y_lo) - 1.0).astype(np.float32)
         return self._t(x_norm), self._t(y_norm)
 
     def _build_tensors(self, data: FlowData, col_fraction: float = 0.4):
@@ -112,15 +113,16 @@ class PINNTrainer:
 
         x_wall = y_wall = None
         if theta_rad is not None:
-            x_range_norm = (data.x.min(), data.x.max())
-            x_wall, y_wall = self._make_wall_points(x_range_norm, theta_rad)
+            x_range_phys = (self.norm.stats["x"][0], self.norm.stats["x"][1])
+            x_wall, y_wall = self._make_wall_points(x_range_phys, theta_rad)
 
         w_max = self.loss_fn.w_physics
-        t0    = time.time()
+        t0_start = time.time()
+        t0 = t0_start
 
         for step in range(1, n_steps + 1):
-            # Ramp physics weight from 0 to w_max over warmup_steps
-            w_phys = w_max * min(1.0, (step - 1) / max(1, warmup_steps))
+            # Ramp physics weight from a small positive value to w_max over warmup_steps
+            w_phys = w_max * max(1e-6, min(1.0, step / max(1, warmup_steps)))
 
             optimizer.zero_grad()
 
@@ -170,6 +172,9 @@ class PINNTrainer:
             if step % 1000 == 0:
                 self._save_checkpoint(f"adam_step{step:06d}")
 
+        total_adam = time.time() - t0_start
+        print(f"[Trainer] Adam phase complete: {n_steps} steps in {total_adam:.1f}s")
+
     # ── Phase 2: L-BFGS ──────────────────────────────────────────────────
 
     def fine_tune_lbfgs(
@@ -193,10 +198,11 @@ class PINNTrainer:
         x_d, y_d, target, x_col, y_col = self._build_tensors(data)
         x_wall = y_wall = None
         if theta_rad is not None:
-            x_range_norm = (data.x.min(), data.x.max())
-            x_wall, y_wall = self._make_wall_points(x_range_norm, theta_rad)
+            x_range_phys = (self.norm.stats["x"][0], self.norm.stats["x"][1])
+            x_wall, y_wall = self._make_wall_points(x_range_phys, theta_rad)
 
         step_count = [0]
+        t0 = time.time()
 
         def closure():
             optimizer.zero_grad()
@@ -216,7 +222,8 @@ class PINNTrainer:
             return loss
 
         optimizer.step(closure)
-        print(f"[Trainer] L-BFGS done. {step_count[0]} function evaluations.")
+        elapsed = time.time() - t0
+        print(f"[Trainer] L-BFGS done. {step_count[0]} function evaluations in {elapsed:.1f}s.")
         self._save_checkpoint("lbfgs_final")
 
     # ── Full training pipeline ────────────────────────────────────────────
@@ -231,9 +238,12 @@ class PINNTrainer:
         warmup_steps: int   = 500,
     ):
         """Run Adam then L-BFGS."""
+        start = time.time()
         self.train_adam(data, n_adam, lr, theta_rad, warmup_steps)
         if n_lbfgs > 0:
             self.fine_tune_lbfgs(data, n_lbfgs, theta_rad=theta_rad)
+        total = time.time() - start
+        print(f"[Trainer] Total training time: {total:.1f}s")
 
     # ── Checkpoint I/O ────────────────────────────────────────────────────
 

@@ -46,6 +46,8 @@ def plot_mach_contour(x, y, Ma, theta_rad, beta_rad, mach_inf=2.5,
                  fontweight="bold")
     ax.legend(loc="upper right", fontsize=9)
     ax.set_aspect("equal")
+    ax.set_xlim(x.min(), x.max())
+    ax.set_ylim(y.min(), y.max())
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -90,6 +92,8 @@ def plot_flow_field(x, y, cfd, pinn, theta_rad, beta_rad,
             ax.set_title(f"{title} — {labels.get(field, field)}", fontsize=9)
             ax.set_xlabel("x [m]"); ax.set_ylabel("y [m]")
             ax.set_aspect("equal")
+            ax.set_xlim(x.min(), x.max())
+            ax.set_ylim(y.min(), y.max())
 
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -101,10 +105,11 @@ def plot_training_loss(history, save_path="training_loss.png"):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 4))
 
     colours = {"total":"#1f77b4","data":"#ff7f0e","physics":"#2ca02c","bc":"#d62728"}
+    labels = {"total":"Total","data":"Data","physics":"Physics","bc":"BC"}
     for k, c in colours.items():
         vals = history.get(k, [])
         if len(vals) == len(steps) and any(v > 0 for v in vals):
-            ax1.semilogy(steps, vals, label=k.capitalize(), color=c, lw=1.8)
+            ax1.semilogy(steps, vals, label=labels[k], color=c, lw=1.8)
     ax1.set_xlabel("Step"); ax1.set_ylabel("Loss")
     ax1.set_title("Loss History", fontweight="bold")
     ax1.legend(); ax1.grid(True, which="both", alpha=0.3)
@@ -136,6 +141,8 @@ def plot_error_field(x, y, cfd, pinn, theta_rad, beta_rad,
         _shock(ax, beta_rad, Xi[0].max(), color="cyan", lw=1.2, ls="--")
         plt.colorbar(im, ax=ax, label="Rel. error [%]", shrink=0.85)
         ax.set_title(field); ax.set_xlabel("x [m]"); ax.set_aspect("equal")
+        ax.set_xlim(x.min(), x.max())
+        ax.set_ylim(y.min(), y.max())
 
     fig.suptitle("PINN Relative Error vs Reference", fontweight="bold")
     plt.savefig(save_path, dpi=150)
@@ -159,7 +166,7 @@ def plot_shock_detection(x, y, rho, p, theta_rad, beta_rad,
         _wedge(ax, theta_rad, xmax)
         plt.colorbar(im, ax=ax, shrink=0.85)
         ax.set_title(label); ax.set_xlabel("x [m]"); ax.set_ylabel("y [m]")
-        ax.set_aspect("equal"); ax.legend(fontsize=8)
+        ax.set_aspect("equal"); ax.set_xlim(x.min(), x.max()); ax.set_ylim(y.min(), y.max()); ax.legend(fontsize=8)
 
     fig.suptitle("Gradient-Based Shock Detection", fontweight="bold")
     plt.tight_layout()

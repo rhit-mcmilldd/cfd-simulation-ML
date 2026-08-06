@@ -18,7 +18,8 @@ NORMALISED outputs. To evaluate the PDE in physical units we must:
   1. Keep the network outputs in the computation graph (no .detach())
   2. Denormalise using in-graph arithmetic: x_phys = (x_norm+1)/2 * span + lo
   3. Apply the chain rule for spatial derivatives:
-        ∂f/∂x_phys = (∂f/∂x_norm) * (1 / span_x)
+        ∂f/∂x_phys = (∂f/∂x_norm) * (2 / span_x)
+        ∂f/∂y_phys = (∂f/∂y_norm) * (2 / span_y)
 """
 
 import torch
@@ -61,10 +62,10 @@ def euler_residuals(
     """
 
     def ddx(f):
-        return _grad(f, x_norm) / span_x
+        return _grad(f, x_norm) * (2.0 / span_x)
 
     def ddy(f):
-        return _grad(f, y_norm) / span_y
+        return _grad(f, y_norm) * (2.0 / span_y)
 
     R_cont = ddx(rho * u) + ddy(rho * v)
     R_xmom = ddx(rho * u**2 + p) + ddy(rho * u * v)
@@ -177,10 +178,17 @@ class PhysicsLoss(nn.Module):
         theta_rad: float,
     ) -> torch.Tensor:
         """
-        No-penetration condition on wedge surface: V · n = 0
+        Enforce no-penetration on the wedge surface by driving the wall-normal
+        velocity component to zero.
+
+        The model outputs the physical velocity components (u, v) at wall
+        coordinates. The boundary loss computes the normal component of that
+        velocity and penalises its squared magnitude.
 
         Wedge surface: y = x·tan(θ)
-        Outward normal: n = (-tan(θ), 1) / ||n||
+        Outward normal direction: n ∝ (-tan(θ), 1)
+        Normalised unit normal: n = (-tan(θ), 1) / sqrt(tan(θ)^2 + 1)
+        Wall-normal velocity: V_n = u * n_x + v * n_y
         """
         import math
         norm_mag = math.sqrt(math.tan(theta_rad)**2 + 1.0)
@@ -190,7 +198,9 @@ class PhysicsLoss(nn.Module):
         u_wall = pred_wall["u"].reshape(-1)
         v_wall = pred_wall["v"].reshape(-1)
         Vn     = u_wall * nx + v_wall * ny
-        return Vn.pow(2).mean()
+        # Normalize the wall-normal velocity by the characteristic flow speed
+        vel_scale = torch.sqrt((u_wall**2 + v_wall**2).mean()).clamp(min=1e-6)
+        return (Vn / vel_scale).pow(2).mean()
 
     def total_loss(
         self,
