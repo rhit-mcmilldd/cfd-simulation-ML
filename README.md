@@ -1,69 +1,154 @@
-# OpenFOAM Case — Supersonic Wedge (M=2.5, θ=15°)
+# Shockwave PINN
 
-## Solver
-`rhoCentralFoam` — density-based compressible solver using the
-Kurganov-Tadmor central scheme. Correct for supersonic inviscid flow.
+Physics-Informed Neural Network for predicting supersonic oblique shockwaves
+over a 2-D wedge. Trained on SU2 reference data or synthetic oblique shock flow.
 
-## How to run
+---
+
+## Project structure
+
+```
+shockwave_pinn_final/
+├── main.py                          # Entry point — runs the full pipeline
+├── requirements.txt
+├── data/
+│   └── loader.py                    # SU2 CSV reader + synthetic generator
+├── models/
+│   └── pinn.py                      # PINN architecture (SIREN + residual blocks)
+├── physics/
+│   └── physics_loss.py              # Euler equation residuals via autograd
+├── training/
+│   └── trainer.py                   # Adam + L-BFGS two-phase training loop
+├── visualization/
+│   └── visualizer.py                # Contour plots, error maps, loss curves
+├── README.md
+├── PAPER.md
+├── streamlit_app.py
+├── visualize.py
+└── __init__.py
+```
+
+---
+
+## Quick start
+
+### 1. Install dependencies
 
 ```bash
-cd openfoam_case
-
-# 1. Generate the 2-D wedge mesh (requires blockMesh)
-blockMesh
-
-# 2. Check the mesh
-checkMesh
-
-# 3. Run the solver
-rhoCentralFoam > log.rhoCentralFoam 2>&1 &
-
-# 4. Monitor convergence
-tail -f log.rhoCentralFoam
-
-# 5. Post-process surfaces (generates the .raw files the PINN reads)
-postProcess -func surfaces
+pip install -r requirements.txt
 ```
 
-## Mesh setup (blockMeshDict)
-You need to create `system/blockMeshDict` defining the wedge geometry.
-A 15° wedge in a 2m × 1.2m domain with ~200×100 cells is sufficient.
+### 2. Run training only
 
-Key blocks:
-- Inlet face at x=0
-- Wedge surface along y = x·tan(15°)
-- Outlet at x=2m
-- Top boundary at y=1.2m
+Generate training data and train the PINN without visualization.
 
-## Output location
-After running postProcess, data appears in:
-```
-postProcessing/surfaces/{time}/
-    wedge_plane_p.raw
-    wedge_plane_U.raw
-    wedge_plane_rho.raw
-    wedge_plane_T.raw
-    wedge_plane_Ma.raw
-```
-
-Rename these to match the loader:
 ```bash
-cd postProcessing/surfaces/{time}/
-mv wedge_plane_p.raw   wedge_p.raw
-mv wedge_plane_U.raw   wedge_U.raw
-mv wedge_plane_rho.raw wedge_rho.raw
-mv wedge_plane_T.raw   wedge_T.raw
-mv wedge_plane_Ma.raw  wedge_Ma.raw
+python main.py --task train --mode synthetic
 ```
 
-Then run the PINN:
+### 3. Run training + visualization
+
+Train the model and then produce plots from the trained checkpoint.
+
 ```bash
-cd ../../../..
-python main.py --mode openfoam --data_dir postProcessing/surfaces
+python main.py --task train_visualize --mode synthetic
 ```
 
-## Expected results
-- Shock angle β ≈ 36.9° (theory)
-- Post-shock Mach ≈ 1.87
-- Post-shock pressure ≈ 250,000 Pa
-- Post-shock temperature ≈ 397 K
+### 4. Run on SU2 CSV data
+
+```bash
+python main.py --task train --mode su2 --data_dir path/to/su2/output.csv
+```
+
+### 5. Streamlit UI
+
+Run the browser-based interface with:
+
+```bash
+streamlit run streamlit_app.py
+```
+
+Use the sidebar to select:
+- `mode` (`synthetic` or `su2`)
+- `task` (`train`, `train_visualize`, `visualize`)
+- `mach_inf`, `wedge_angle_deg`, `p_inf`, `T_inf`, `rho_inf`
+- `output_dir` and SU2 CSV data settings when needed
+
+The UI also displays generated output images after the pipeline finishes.
+
+### 6. Visualize from a saved checkpoint
+
+```bash
+python main.py --task visualize --mode synthetic --checkpoint outputs/model_final.pt
+```
+
+For SU2 visualization, use `--mode su2` and the same CSV file or directory used during training.
+
+---
+
+## Command-line arguments
+
+| Argument | Default | Description |
+|---|---|---|
+| `--task` | `train_visualize` | `train`, `visualize`, or `train_visualize` |
+| `--mode` | `synthetic` | `synthetic` or `su2` |
+| `--data_dir` | `path/to/su2/output.csv` | SU2 CSV file or directory for mode=su2 |
+| `--mach_inf` | `2.5` | Free-stream Mach number |
+| `--wedge_angle_deg` | `15.0` | Wedge half-angle [degrees]. |
+| `--aoa_deg` | `None` | Alias for `--wedge_angle_deg` when using the wedge as a flow incidence angle. |
+| `--n_points` | `8000` | Training points |
+| `--hidden_layers` | `8` | PINN depth |
+| `--hidden_width` | `128` | PINN width |
+| `--n_adam` | `5000` | Adam training steps |
+| `--n_lbfgs` | `300` | L-BFGS iterations |
+| `--lr` | `1e-3` | Adam learning rate |
+| `--w_physics` | `0.1` | Physics loss weight |
+| `--w_bc` | `1.0` | Wall BC loss weight |
+| `--device` | `auto` | `cpu`, `cuda`, or `auto` |
+
+---
+
+## Outputs
+
+All saved to `outputs/` by default:
+
+| File | Description |
+|---|---|
+| `mach_contour.png` | Mach number field with shock line overlay |
+| `flow_field.png` | Side-by-side CFD vs PINN vs Error for ρ, u, p, Ma |
+| `error_field.png` | Relative error maps |
+| `shock_detection.png` | Gradient-based shock sensor |
+| `training_loss.png` | Loss curves and LR schedule |
+| `model_final.pt` | Saved model weights |
+| `normalizer.npz` | Normalisation statistics |
+
+---
+
+## Physics
+
+The PINN enforces the 2-D steady Euler equations at random interior collocation
+points via automatic differentiation (no grid, no finite differences):
+
+```
+∂(ρu)/∂x + ∂(ρv)/∂y = 0          continuity
+∂(ρu²+p)/∂x + ∂(ρuv)/∂y = 0      x-momentum
+∂(ρuv)/∂x + ∂(ρv²+p)/∂y = 0      y-momentum
+p = ρRT                             ideal gas law
+```
+
+The wedge surface no-penetration condition (V·n = 0) is enforced as an
+additional boundary condition loss term.
+
+---
+
+## References
+
+- Raissi, M., Perdikaris, P., Karniadakis, G.E. (2019). Physics-informed neural
+  networks: A deep learning framework for solving forward and inverse problems
+  involving nonlinear partial differential equations. *Journal of Computational
+  Physics*, 378, 686-707.
+
+- Anderson, J.D. (2003). *Modern Compressible Flow*, 3rd ed. McGraw-Hill.
+
+- Sitzmann, V. et al. (2020). Implicit Neural Representations with Periodic
+  Activation Functions (SIREN). *NeurIPS 2020*.
