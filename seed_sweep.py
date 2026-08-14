@@ -49,25 +49,6 @@ def main():
     root = Path(args.output_root)
     root.mkdir(parents=True, exist_ok=True)
 
-    # Resolve main.py relative to this script's own location, not the
-    # directory the user happened to be `cd`'d into — avoids "file not
-    # found" errors if the sweep is launched from elsewhere, and gives a
-    # clear error immediately if main.py is missing/misnamed rather than
-    # failing silently on every seed.
-    script_dir = Path(__file__).resolve().parent
-    main_py = script_dir / "main.py"
-    if not main_py.exists():
-        print(f"[Sweep] ERROR: could not find {main_py}")
-        print(f"[Sweep] seed_sweep.py expects main.py in the same folder as itself.")
-        found = sorted(script_dir.glob("main*.py"))
-        if found:
-            print(f"[Sweep] Files that look similar in {script_dir}:")
-            for f in found:
-                print(f"    {f.name}")
-            print(f"[Sweep] If your browser saved a duplicate (e.g. 'main (1).py'), "
-                  f"rename/move it to exactly 'main.py'.")
-        sys.exit(1)
-
     results = []
     for seed in args.seeds:
         run_dir = root / f"seed_{seed}"
@@ -76,14 +57,14 @@ def main():
         print(f"{'='*60}")
 
         cmd = [
-            args.python, str(main_py),
+            args.python, "main.py",
             "--task", "train",
             "--output_dir", str(run_dir),
             "--seed", str(seed),
             "--data_seed", str(args.data_seed),
             *extra,
         ]
-        ret = subprocess.run(cmd, cwd=script_dir)
+        ret = subprocess.run(cmd)
         if ret.returncode != 0:
             print(f"[Sweep] seed={seed} FAILED (exit code {ret.returncode}); skipping.")
             continue
